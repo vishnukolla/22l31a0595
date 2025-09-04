@@ -1,0 +1,151 @@
+import React, { useState } from "react";
+
+export default function App() {
+  const [sessionToken, setSessionToken] = useState(localStorage.getItem("sessionToken") || "");
+  const [userName, setUserName] = useState("");
+  const [userPass, setUserPass] = useState("");
+  const [originalLink, setOriginalLink] = useState("");
+  const [customAlias, setCustomAlias] = useState("");
+  const [shortened, setShortened] = useState(null);
+  const [feedback, setFeedback] = useState("");
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (!userName || !userPass) {
+      setFeedback("❌ Please enter both username and password");
+      return;
+    }
+
+    try {
+      const res = await fetch("/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: userName, password: userPass }),
+      });
+      if (!res.ok) throw new Error("Login attempt failed");
+      const data = await res.json();
+      setSessionToken(data.token);
+      localStorage.setItem("sessionToken", data.token);
+      setFeedback("✅ Welcome back! You're signed in.");
+    } catch (err) {
+      setFeedback("❌ " + err.message);
+    }
+  };
+
+  const createShortLink = async () => {
+    if (!originalLink.startsWith("http://") && !originalLink.startsWith("https://")) {
+      setFeedback("❌ Link must begin with http:// or https://");
+      return;
+    }
+    if (customAlias && !/^[a-zA-Z0-9_-]+$/.test(customAlias)) {
+      setFeedback("❌ Custom alias can only contain letters, numbers, dashes, or underscores");
+      return;
+    }
+
+    try {
+      const res = await fetch("/links/shorten", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({ url: originalLink, customCode: customAlias }),
+      });
+      if (!res.ok) throw new Error("Unable to shorten this link");
+      const data = await res.json();
+      setShortened(data);
+      setFeedback("✅ Your short link is ready!");
+    } catch (err) {
+      setFeedback("❌ " + err.message);
+    }
+  };
+
+  const handleLogout = () => {
+    setSessionToken("");
+    localStorage.removeItem("sessionToken");
+    setShortened(null);
+    setFeedback("You’ve been signed out");
+  };
+
+  return (
+    <div className="p-6 max-w-md mx-auto text-center">
+      <h1 className="text-2xl font-bold mb-6">🔗 EasyLink Shortener</h1>
+
+      {!sessionToken ? (
+        <form
+          onSubmit={handleLogin}
+          className="flex flex-col gap-3 bg-gray-100 p-4 rounded-lg shadow"
+        >
+          <input
+            type="text"
+            placeholder="Enter username"
+            className="border p-2 rounded"
+            value={userName}
+            onChange={(e) => setUserName(e.target.value)}
+          />
+          <input
+            type="password"
+            placeholder="Enter password"
+            className="border p-2 rounded"
+            value={userPass}
+            onChange={(e) => setUserPass(e.target.value)}
+          />
+          <button
+            type="submit"
+            className="bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+          >
+            Sign In
+          </button>
+        </form>
+      ) : (
+        <div className="flex flex-col gap-3 bg-gray-100 p-4 rounded-lg shadow">
+          <input
+            type="text"
+            placeholder="Paste the full link here..."
+            className="border p-2 rounded"
+            value={originalLink}
+            onChange={(e) => setOriginalLink(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Pick a custom short name (optional)"
+            className="border p-2 rounded"
+            value={customAlias}
+            onChange={(e) => setCustomAlias(e.target.value)}
+          />
+          <button
+            onClick={createShortLink}
+            className="bg-green-500 text-white py-2 rounded hover:bg-green-600"
+          >
+            Generate Short Link
+          </button>
+          <button
+            onClick={handleLogout}
+            className="bg-red-500 text-white py-2 rounded hover:bg-red-600"
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {shortened && (
+        <div className="mt-4 p-3 border rounded bg-white shadow">
+          <p className="font-semibold">
+            Shortened URL:{" "}
+            <a
+              href={`/${shortened.shortCode}`}
+              className="text-blue-600 underline"
+            >
+              {window.location.origin}/{shortened.shortCode}
+            </a>
+          </p>
+          <p className="text-sm text-gray-600">
+            Active until: {new Date(shortened.expiryDate).toLocaleString()}
+          </p>
+        </div>
+      )}
+
+      {feedback && <p className="mt-4 text-sm">{feedback}</p>}
+    </div>
+  );
+}
